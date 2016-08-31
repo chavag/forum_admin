@@ -1,0 +1,1 @@
+Add administrator to every forum that get notifications about forum activity

@@ -1,0 +1,185 @@
+<?php
+/**
+ * @file
+ * manage forum admin emails.
+ *
+ */
+
+
+/**
+ * Implements hook_form_form_id_alter(). 
+ * 
+ */
+function forum_admin_form_forum_admin_settings_alter(&$form, &$form_state) {
+  // default values to emails
+  $default_subject = t('New on forum');
+  $default_text = t('There was new post on your forum');
+
+  //add settings to mail body, and frequency of sending emails 
+  $form['admin_forum'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Forum Administration Settings'),
+    '#collapsible' => TRUE, 
+    '#collapsed' => TRUE,
+	);
+
+  $default = variable_get('node_email_subject' , $default_subject);
+  $form['admin_forum']['node_email_subject'] = array(
+    '#title' => t('Forum topic notifications email subject'),
+    '#type' => 'textfield',
+    '#description' => t('enter the notifications email subject here, use the replacement patterns'),
+    '#default_value' => $default['value']
+  );
+
+  $default = variable_get('node_email_text', $default_text);
+  $form['admin_forum']['node_email_text'] = array(
+    '#title' => t('Forum topic notifications email content'),
+    '#type' => 'text_format',
+    '#description' => t('enter the notifications email body here, use the replacement patterns'),
+    '#default_value' => $default['value']
+  );
+
+  $default = variable_get('comment_email_subject', $default_subject);
+  $form['admin_forum']['comment_email_subject'] = array(
+    '#title' => t('Comments notifications email subject'),
+    '#type' => 'textfield',
+    '#description' => t('enter the notifications email subject here, use the replacement patterns'),
+    '#default_value' => $default['value']
+  );
+
+  $default = variable_get('comment_email_text', $default_text);
+  $form['admin_forum']['comment_email_text'] = array(
+    '#title' => t('Comments notifications email content'),
+    '#type' => 'text_format',
+    '#description' => t('enter the notifications email body here, use the replacement patterns'),
+    '#default_value' => $default['value']
+  );
+
+}
+
+/**
+ * Implements hook_form_form_id_alter().
+ */
+function forum_admin_form_forum_form_forum_alter(&$form, $form_state) {
+  // Show fields from taxonomy term for forum.
+  if (!isset($form['tid'])) {
+    $voc = taxonomy_vocabulary_load($form['vid']['#value']);
+    $defaults = array(
+      'name' => '',
+      'description' => '',
+      'format' => NULL,
+      'vocabulary_machine_name' => $voc->machine_name,
+      'tid' => NULL,
+      'weight' => 0,
+    );
+
+    $term = (object) $defaults;
+  }
+  else {
+    $term = taxonomy_term_load($form['tid']['#value']);
+  }
+
+  $form['#term'] = (array) $term;
+  $form_state['term'] = $term;
+  field_attach_form('taxonomy_term', $term, $form, $form_state);
+}
+
+/**
+ * Implements hook_entity_insert().
+ */
+function forum_admin_entity_insert($entity, $type) {
+
+  global $language;
+  
+  if ($type == 'comment') {
+    $forum_node = node_load($entity->nid);
+  } 
+  else {
+    if ($type == 'node') {
+      $forum_node = $entity;
+    }
+  } 
+
+  if (isset($forum_node) && $forum_node->type == 'forum') {
+    $forum_tid = $forum_node->taxonomy_forums['und'][0]['tid'];
+    $forum = taxonomy_term_load($forum_tid);
+
+    if (isset($forum->field_administrator_mail) && 
+      count($forum->field_administrator_mail) > 0) {
+        foreach ($forum->field_administrator_mail['und'] as $to) {
+          drupal_mail('forum_admin',
+          'alert_forum',
+          $to,
+          $language,
+          array('entity' => $entity, 'type' => $type),
+             variable_get('site_mail')
+          );        
+        }
+      }
+  }
+}
+
+/**
+ * Implements hook_mail().
+*/
+function forum_admin_mail($key, &$message, $params) {
+  $lang = $message['language']->language;
+  switch ($key) {
+    case 'alert_forum':
+      $subject = variable_get($params['type'] . '_email_subject');
+      $subject = token_replace($subject['value'],
+       array($params['type'] => $params['entity']), 
+       array('language' => $message['language']));
+
+      $body = variable_get($params['type'] . '_email_text');
+      $body = token_replace($body['value'],
+        array($params['type'] => $params['entity']),
+        array('language' => $message['language']));
+
+      dpm($subject);
+      dpm($body);
+
+      $message['subject'] = $subject;
+      $message['body'][] = $body;
+      break;
+  }
+}
+
+function forum_admin_add_admin_field() {
+
+  cache_clear_all();
+
+  $field = array(
+    'field_name' => 'field_administrator_mail',
+    'type' => 'email',
+    'translatable' => FALSE,
+  );
+
+  $instance = array(
+    'field_name' => 'field_administrator_mail',
+    'entity_type' => 'taxonomy_term',
+    'bundle' => 'forums',
+    'label' => t('Administrator mail'),
+    'widget' => array(
+      'type' => 'email_textfield',
+      'weight' => '41',
+    ),
+  );
+
+  // Create the field and instance.
+  try {
+    field_create_field($field);
+    field_create_instance($instance);
+  } 
+  catch (Exception $e) {
+    drupal_set_message(t('There was a problem creating field %label: @message', array('%label' => $instance['label'], '@message' => $e->getMessage())), 'error');
+  }
+
+}
+
+function forum_admin_set_default_texts() {
+  variable_set('node_email_subject' , array('value' => t('New topic on your forum')));
+  variable_set('node_email_text' , array('value' => t('There is a new topic on your forum, [node:url]')));
+  variable_set('comment_email_subject' , array('value' => t('New comment on your forum topic')));
+  variable_set('comment_email_text' , array('value' => t('There is a new comment on your forum topic, [comment:url]')));
+}

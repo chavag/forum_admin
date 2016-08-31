@@ -1,0 +1,12 @@
+<?php
+
+/**
+ * Implements hook_install().
+ */
+function forum_admin_install() {
+	//add admin email field to forums vocabulary
+	forum_admin_add_admin_field();
+	//set default email texts
+	forum_admin_set_default_texts();
+}
+

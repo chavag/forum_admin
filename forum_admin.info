@@ -1,0 +1,8 @@
+name = forum_admin
+description = Add administrator to forum.
+ The administrator will get an email on every creation/edition of forum topic, 
+ and on every new comment.
+dependencies[] = forum
+dependencies[] = email
+core = 7.x
+package = custom
